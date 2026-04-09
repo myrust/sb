@@ -229,10 +229,11 @@ def install_cloudflare_warp() -> None:
     raise SystemExit(f"Unsupported distro for cloudflare-warp install: {distro_id or 'unknown'}")
 
 
-def configure_warp(license_key: str, proxy_port: int) -> None:
+def configure_warp(license_key: str | None, proxy_port: int) -> None:
     require_root()
     run(["warp-cli", "registration", "new"], check=False, input_text="y\n")
-    run(["warp-cli", "registration", "license", license_key])
+    if license_key:
+        run(["warp-cli", "registration", "license", license_key])
     run(["warp-cli", "tunnel", "protocol", "set", "MASQUE"])
     run(["warp-cli", "mode", "proxy"])
     run(["warp-cli", "proxy", "port", str(proxy_port)])
@@ -504,7 +505,7 @@ def show_ip_command(args: argparse.Namespace) -> None:
 def install_command(args: argparse.Namespace) -> None:
     require_root()
 
-    license_key = args.license or prompt_text("Cloudflare WARP license", required=True)
+    license_key = args.license
     tuic_port = args.tuic_port if args.tuic_port is not None else DEFAULT_TUIC_PORT
     ss_port = args.ss_port if args.ss_port is not None else DEFAULT_SS_PORT
     warp_port = args.warp_port if args.warp_port is not None else DEFAULT_WARP_PORT
@@ -582,7 +583,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     install_parser = subparsers.add_parser("install", help="Install cloudflare-warp, sing-box, config, and systemd service.")
-    install_parser.add_argument("--license", help="Cloudflare WARP license key.")
+    install_parser.add_argument("--license", help="Optional Cloudflare WARP license key.")
     install_parser.add_argument("--tuic-port", type=int, help="TUIC listen port.")
     install_parser.add_argument("--ss-port", type=int, help="Shadowsocks listen port.")
     install_parser.add_argument("--warp-port", type=int, help="Local WARP proxy port.")
