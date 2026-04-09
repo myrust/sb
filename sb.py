@@ -514,11 +514,55 @@ def show_config_command(args: argparse.Namespace) -> None:
     print(CONFIG_PATH.read_text(), end="")
 
 
+def systemctl_state(action: str, unit: str) -> str:
+    result = run(["systemctl", action, unit], check=False, capture_output=True)
+    return (result.stdout or result.stderr).strip() or "unknown"
+
+
+def render_install_summary(info: dict[str, Any]) -> str:
+    ip = info.get("ip", {})
+    warp = info.get("warp", {})
+    tuic = info.get("tuic", {})
+    shadowsocks = info.get("shadowsocks", {})
+    warp_state = info.get("warp_status", {})
+    warp_message = warp_state.get("status", "unknown")
+    first_warp_line = warp_message.splitlines()[0] if isinstance(warp_message, str) and warp_message else "unknown"
+    singbox_enabled = systemctl_state("is-enabled", "sing-box.service")
+    singbox_active = systemctl_state("is-active", "sing-box.service")
+
+    return "\n".join(
+        [
+            "安装完成：",
+            f"- warp-cli 已连接：{first_warp_line}",
+            f"- sing-box 已安装：{BINARY_PATH}",
+            f"- sing-box.service 已启用并在运行：{singbox_enabled} / {singbox_active}",
+            "- 配置文件已生成：",
+            f"  - {CONFIG_PATH}",
+            f"  - {INSTALL_INFO_PATH}",
+            "",
+            "监听情况：",
+            f"- TUIC: {tuic.get('listen_port', 'unknown')}/udp",
+            f"- Shadowsocks: {shadowsocks.get('listen_port', 'unknown')}",
+            f"- WARP SOCKS: 127.0.0.1:{warp.get('proxy_port', 'unknown')}",
+            "",
+            "本次生成的关键信息：",
+            f"- TUIC username: {tuic.get('username', 'unknown')}",
+            f"- TUIC uuid: {tuic.get('uuid', 'unknown')}",
+            f"- TUIC password: {tuic.get('password', 'unknown')}",
+            f"- SS password: {shadowsocks.get('password', 'unknown')}",
+            "",
+            "服务器 IP：",
+            f"- IPv4: {ip.get('ipv4') or 'N/A'}",
+            f"- IPv6: {ip.get('ipv6') or 'N/A'}",
+        ]
+    )
+
+
 def show_info_command(args: argparse.Namespace) -> None:
     info = read_install_info()
     info["ip"] = detect_local_ips()
     info["warp_status"] = warp_status()
-    print(json.dumps(info, indent=2, ensure_ascii=False))
+    print(render_install_summary(info))
 
 
 def show_ip_command(args: argparse.Namespace) -> None:
