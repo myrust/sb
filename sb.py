@@ -55,6 +55,15 @@ def run(
     )
 
 
+def run_expect(script: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["expect", "-c", script],
+        check=check,
+        text=True,
+        capture_output=True,
+    )
+
+
 def require_root() -> None:
     if os.geteuid() != 0:
         raise SystemExit("This command must be run as root.")
@@ -212,7 +221,7 @@ def install_cloudflare_warp() -> None:
             f"deb [signed-by={WARP_APT_KEYRING}] https://pkg.cloudflareclient.com/ {codename} main\n"
         )
         run(["apt-get", "update"])
-        run(["apt-get", "install", "-y", "cloudflare-warp"])
+        run(["apt-get", "install", "-y", "cloudflare-warp", "expect"])
         return
 
     if distro_id in {"centos", "rhel"} or info.get("ID_LIKE", "").lower().find("rhel") != -1:
@@ -223,15 +232,29 @@ def install_cloudflare_warp() -> None:
         WARP_YUM_REPO.write_text(repo_tmp.read_text())
         pkg_mgr = "dnf" if shutil.which("dnf") else "yum"
         run([pkg_mgr, "-y", "update"])
-        run([pkg_mgr, "-y", "install", "cloudflare-warp"])
+        run([pkg_mgr, "-y", "install", "cloudflare-warp", "expect"])
         return
 
     raise SystemExit(f"Unsupported distro for cloudflare-warp install: {distro_id or 'unknown'}")
 
 
+def registration_expect_script() -> str:
+    return r"""
+set timeout 120
+spawn warp-cli registration new
+expect {
+    -re {Accept Terms of Service and Privacy Policy\? \[y/N\]} {
+        send "y\r"
+        exp_continue
+    }
+    eof
+}
+"""
+
+
 def configure_warp(license_key: str | None, proxy_port: int) -> None:
     require_root()
-    run(["warp-cli", "registration", "new"], check=False, input_text="y\n")
+    run_expect(registration_expect_script(), check=False)
     if license_key:
         run(["warp-cli", "registration", "license", license_key])
     run(["warp-cli", "tunnel", "protocol", "set", "MASQUE"])
