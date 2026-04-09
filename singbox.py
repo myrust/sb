@@ -40,8 +40,19 @@ BBR_QDISC = "net.core.default_qdisc=fq"
 BBR_CC = "net.ipv4.tcp_congestion_control=bbr"
 
 
-def run(cmd: list[str], check: bool = True, capture_output: bool = False) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, check=check, text=True, capture_output=capture_output)
+def run(
+    cmd: list[str],
+    check: bool = True,
+    capture_output: bool = False,
+    input_text: str | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        cmd,
+        check=check,
+        text=True,
+        capture_output=capture_output,
+        input=input_text,
+    )
 
 
 def require_root() -> None:
@@ -220,7 +231,7 @@ def install_cloudflare_warp() -> None:
 
 def configure_warp(license_key: str, proxy_port: int) -> None:
     require_root()
-    run(["warp-cli", "registration", "new"], check=False)
+    run(["warp-cli", "registration", "new"], check=False, input_text="y\n")
     run(["warp-cli", "registration", "license", license_key])
     run(["warp-cli", "tunnel", "protocol", "set", "MASQUE"])
     run(["warp-cli", "mode", "proxy"])
@@ -397,15 +408,6 @@ def install_service() -> None:
     SERVICE_PATH.write_text(service_unit())
     run(["systemctl", "daemon-reload"])
 
-
-def service_command(args: argparse.Namespace) -> None:
-    require_root()
-    if args.action == "daemon-reload":
-        run(["systemctl", "daemon-reload"])
-        return
-    run(["systemctl", args.action, "sing-box.service"])
-
-
 def bbr_status() -> dict[str, Any]:
     qdisc = run(["sysctl", "-n", "net.core.default_qdisc"], capture_output=True).stdout.strip()
     cc = run(["sysctl", "-n", "net.ipv4.tcp_congestion_control"], capture_output=True).stdout.strip()
@@ -503,10 +505,10 @@ def install_command(args: argparse.Namespace) -> None:
     require_root()
 
     license_key = args.license or prompt_text("Cloudflare WARP license", required=True)
-    tuic_port = args.tuic_port or prompt_int("TUIC port", DEFAULT_TUIC_PORT)
-    ss_port = args.ss_port or prompt_int("Shadowsocks port", DEFAULT_SS_PORT)
-    warp_port = args.warp_port or prompt_int("WARP proxy port", DEFAULT_WARP_PORT)
-    tls_server_name = args.tls_server_name or prompt_text("TLS server_name for self-signed cert", DEFAULT_TLS_SERVER_NAME, required=True)
+    tuic_port = args.tuic_port if args.tuic_port is not None else DEFAULT_TUIC_PORT
+    ss_port = args.ss_port if args.ss_port is not None else DEFAULT_SS_PORT
+    warp_port = args.warp_port if args.warp_port is not None else DEFAULT_WARP_PORT
+    tls_server_name = args.tls_server_name or DEFAULT_TLS_SERVER_NAME
 
     for port in {tuic_port, ss_port, warp_port}:
         ensure_port_available(port)
@@ -600,9 +602,6 @@ def build_parser() -> argparse.ArgumentParser:
     bbr_parser = subparsers.add_parser("bbr", help="Manage BBR.")
     bbr_parser.add_argument("action", choices=["status", "enable"])
 
-    service_parser = subparsers.add_parser("service", help="Manage sing-box systemd service.")
-    service_parser.add_argument("action", choices=["enable", "disable", "start", "restart", "stop", "status", "reload", "daemon-reload"])
-
     return parser
 
 
@@ -631,10 +630,6 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "bbr":
         bbr_command(args)
         return 0
-    if args.command == "service":
-        service_command(args)
-        return 0
-
     parser.error("Unknown command")
     return 2
 

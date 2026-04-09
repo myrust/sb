@@ -7,7 +7,7 @@
 - 本地 `Cloudflare WARP` SOCKS 代理出站
 - 两个入站默认都走 `warp`
 
-主入口是 [`singbox.py`](/Users/kk/Github/singbox/singbox.py)，[`singbox.sh`](/Users/kk/Github/singbox/singbox.sh) 只是兼容转发。
+主入口是 [`singbox.py`](/Users/kk/Github/singbox/singbox.py)。
 
 ## 默认行为
 
@@ -76,12 +76,6 @@ sudo python3 singbox.py install \
   --tls-server-name bing.com
 ```
 
-兼容调用方式：
-
-```bash
-bash singbox.sh install
-```
-
 ## 常用命令
 
 更新 WARP license：
@@ -115,12 +109,12 @@ python3 singbox.py validate-config
 sudo python3 singbox.py validate-config --strict
 ```
 
-管理服务：
+管理服务直接用 `systemctl`：
 
 ```bash
-sudo python3 singbox.py service enable
-sudo python3 singbox.py service restart
-sudo python3 singbox.py service status
+sudo systemctl enable sing-box.service
+sudo systemctl restart sing-box.service
+sudo systemctl status sing-box.service
 ```
 
 查看或启用 BBR：
@@ -149,7 +143,6 @@ sudo python3 singbox.py bbr enable
 
 ## 说明
 
-- 这是服务端安装脚本，不负责客户端配置文件导出
-- 默认是自签名证书，证书 `CN/server_name` 默认使用 `bing.com`
-- 如果你以后要改模板，优先直接改 [`singbox.py`](/Users/kk/Github/singbox/singbox.py)
-- [`singbox.sh`](/Users/kk/Github/singbox/singbox.sh) 不再承载业务逻辑
+- 这是一个固定模板的一键安装器，目标是快速部署服务端
+- 默认生成自签名 TLS 证书，默认证书名称使用 `bing.com`
+- 生成的配置由脚本自动写入 `/usr/local/etc/sing-box/config.json`
