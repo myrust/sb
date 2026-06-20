@@ -1,7 +1,7 @@
 ### Sing-box executable file directory: /usr/local/bin/sing-box.
 ### The systemd service directory of sing-box: /etc/systemd/system/sing-box.service.
 ### Sing-box configuration file directory: /usr/local/etc/sing-box/config.json.
-### Github.com/TinrLin/singbox 脚本备份
+### Github.com/myrust/singbox 脚本
 # **Script installation**
 
 # **Install**

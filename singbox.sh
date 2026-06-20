@@ -2082,6 +2082,7 @@ function modify_route_rules() {
         jq '(.route.rules |= [.[] | select(.rule_set != null)] + [.[] | select(.rule_set == null)])' "$config_file" > "$temp_config_file"
         mv "$temp_config_file" "$config_file"
     fi
+    migrate_legacy_config_schema
 }
 
 function extract_variables_and_cleanup() {
@@ -2104,6 +2105,31 @@ function log_outbound_config() {
     sed -i '/"route": {/!b;n;c\    "rules": [\n    ]\n  },' "$config_file"
     sed -i '/"outbounds": \[/!b;n;c\    {\n      "type": "direct",\n      "tag": "direct"\n    }\n  ]' "$config_file"
   fi
+}
+
+function migrate_legacy_config_schema() {
+    local config_file="/usr/local/etc/sing-box/config.json"
+    local temp_config_file="/usr/local/etc/sing-box/temp_config.json"
+    jq '
+      def unique_rules:
+        reduce .[] as $rule ([]; if any(.[]; . == $rule) then . else . + [$rule] end);
+      def sniff_rules:
+        [
+          .inbounds[]?
+          | select(.sniff == true and .tag != null)
+          | {inbound: [.tag], action: "sniff"}
+            + (if .sniff_timeout != null then {timeout: .sniff_timeout} else {} end)
+        ];
+      .route.rules = ((sniff_rules + (.route.rules // [])) | unique_rules) |
+      .inbounds = ((.inbounds // []) | map(del(
+        .sniff,
+        .sniff_override_destination,
+        .sniff_timeout,
+        .domain_strategy,
+        .udp_disable_domain_unmapping,
+        .proxy_protocol
+      )))
+    ' "$config_file" > "$temp_config_file" && mv "$temp_config_file" "$config_file"
 }
 
 function modify_format_inbounds_and_outbounds() {
@@ -4499,24 +4525,27 @@ function display_shadowtls_config_files() {
 
 function view_saved_config() {
     local config_paths=(
-        "/usr/local/etc/sing-box/config.json"
-        "/usr/local/etc/juicity/config.json"
+        "/usr/local/etc/sing-box/output.txt"
+        "/usr/local/etc/juicity/output.txt"
     )
     local found=false
     for path in "${config_paths[@]}"; do
         if [[ -f "$path" ]]; then
-            echo "配置文件 ($path):"
+            echo "节点信息 ($path):"
             cat "$path"
             found=true
         fi
     done
 
     if [[ "$found" == false ]]; then
-        echo "未找到 config.json！"
+        echo "未找到 output.txt！"
     fi
 }
 
 function check_and_restart_services() {
+    if [ -f "/usr/local/etc/sing-box/config.json" ]; then
+        migrate_legacy_config_schema
+    fi
     if [ -f "/etc/systemd/system/sing-box.service" ]; then
         systemctl restart sing-box.service
         systemctl status --no-pager sing-box.service
@@ -4583,7 +4612,7 @@ function check_wireguard_config() {
 }
 
 function Update_Script() {
-    wget -O /root/singbox.sh https://raw.githubusercontent.com/TinrLin/script_installation/main/Install.sh
+    wget -O /root/singbox.sh https://raw.githubusercontent.com/myrust/singbox/main/singbox.sh
     chmod +x /root/singbox.sh 
 }
 
@@ -4609,6 +4638,7 @@ function juicity_install() {
     systemctl enable juicity.service
     systemctl start juicity.service
     systemctl restart juicity.service
+    display_juicity_config
 }
 
 function Direct_install() {
@@ -4627,6 +4657,7 @@ function Direct_install() {
     systemctl start sing-box
     systemctl restart sing-box
     get_local_ip    
+    display_Direct_config
 }
 
 function Shadowsocks_install() {
@@ -4645,6 +4676,7 @@ function Shadowsocks_install() {
     systemctl start sing-box
     systemctl restart sing-box
     get_local_ip
+    display_Shadowsocks_config_info
 }
 
 function socks_install() {
@@ -4660,6 +4692,7 @@ function socks_install() {
     systemctl start sing-box
     systemctl restart sing-box
     get_local_ip
+    display_socks_config_info
 }
 
 function NaiveProxy_install() {
@@ -4674,6 +4707,7 @@ function NaiveProxy_install() {
     systemctl enable sing-box
     systemctl start sing-box
     systemctl restart sing-box
+    display_naive_config_info
 }
 
 function http_install() {
@@ -4688,6 +4722,7 @@ function http_install() {
     systemctl enable sing-box
     systemctl start sing-box
     systemctl restart sing-box
+    display_http_config_info
 }
 
 function tuic_install() {
@@ -4703,6 +4738,7 @@ function tuic_install() {
     systemctl start sing-box
     systemctl restart sing-box
     get_local_ip 
+    display_tuic_config_info
 }
 
 function Hysteria_install() {
@@ -4717,6 +4753,7 @@ function Hysteria_install() {
     systemctl enable sing-box
     systemctl start sing-box
     systemctl restart sing-box
+    display_Hysteria_config_info
 }
 
 function shadowtls_install() {
@@ -4732,6 +4769,7 @@ function shadowtls_install() {
     systemctl start sing-box
     systemctl restart sing-box
     get_local_ip    
+    display_shadowtls_config_info
 }
 
 function reality_install() {
@@ -4747,6 +4785,7 @@ function reality_install() {
     systemctl start sing-box
     systemctl restart sing-box
     get_local_ip    
+    display_reality_config_info
 }
 
 function Hysteria2_install() {
@@ -4761,6 +4800,7 @@ function Hysteria2_install() {
     systemctl enable sing-box
     systemctl start sing-box
     systemctl restart sing-box
+    display_Hy2_config_info
 }
 
 function trojan_install() {
@@ -4775,6 +4815,7 @@ function trojan_install() {
     systemctl enable sing-box 
     systemctl start sing-box
     systemctl restart sing-box
+    display_trojan_config_info
 }
 
 function vmess_install() {
@@ -4790,6 +4831,7 @@ function vmess_install() {
     systemctl enable sing-box
     systemctl start sing-box
     systemctl restart sing-box
+    display_vmess_config_info
 }
 
 function wireguard_install() {
@@ -4803,6 +4845,7 @@ function wireguard_install() {
     get_temp_config_file
     extract_variables_and_cleanup
     update_outbound_file
+    migrate_legacy_config_schema
     systemctl restart sing-box
 }
 
@@ -4817,7 +4860,7 @@ function main_menu() {
 echo "╔════════════════════════════════════════════════════════════════════════╗"
 echo -e "║ ${CYAN}作者${NC}： Mr. xiao                                                        ║"
 echo -e "║ ${CYAN}博客地址${NC}: https://tinrlin.com                                          ║"
-echo -e "║ ${CYAN}项目地址${NC}: https://github.com/TinrLin                                   ║"
+echo -e "║ ${CYAN}项目地址${NC}: https://github.com/myrust/singbox                            ║"
 echo -e "║ ${CYAN}Telegram 群组${NC}: https://t.me/mrxiao758                                  ║"
 echo -e "║ ${CYAN}YouTube频道${NC}: https://youtube.com/@Mr_xiao502       Version：1.2        ║"
 echo "╠════════════════════════════════════════════════════════════════════════╣"
@@ -4829,7 +4872,7 @@ echo -e "║${CYAN} [7]${NC}  Juicity                           ${CYAN} [8]${NC}
 echo -e "║${CYAN} [9]${NC}  Hysteria                          ${CYAN} [10]${NC}  Hysteria2                ║"
 echo -e "║${CYAN} [11]${NC} ShadowTLS                         ${CYAN} [12]${NC}  NaiveProxy               ║"
 echo -e "║${CYAN} [13]${NC} Shadowsocks                       ${CYAN} [14]${NC}  WireGuard                ║"
-echo -e "║${CYAN} [15]${NC} 查看 config.json                  ${CYAN} [16]${NC}  更新内核                 ║"
+echo -e "║${CYAN} [15]${NC} 查看节点信息                    ${CYAN} [16]${NC}  更新内核                 ║"
 echo -e "║${CYAN} [17]${NC} 更新脚本                          ${CYAN} [18]${NC}  更新证书                 ║"
 echo -e "║${CYAN} [19]${NC} 重启服务                          ${CYAN} [20]${NC}  节点管理                 ║"
 echo -e "║${CYAN} [21]${NC} 卸载                              ${CYAN} [0]${NC}   退出                     ║"
