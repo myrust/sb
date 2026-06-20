@@ -249,6 +249,7 @@ function create_juicity_folder() {
 }
 
 function ensure_clash_yaml() {
+    return 0
     local clash_yaml="/usr/local/etc/sing-box/clash.yaml"
     if [ ! -e "$clash_yaml" ]; then
         touch "$clash_yaml"
@@ -264,6 +265,7 @@ function check_config_file_existence() {
 }
 
 function generate_naive_random_filename() {
+    return 0
     local dir="/usr/local/etc/sing-box"
     local filename=""    
     while true; do
@@ -2076,8 +2078,8 @@ function validate_tls_info() {
 function modify_route_rules() {
     local config_file="/usr/local/etc/sing-box/config.json"
     local temp_config_file="/usr/local/etc/sing-box/temp_config.json"
-    if jq -e '.route.rules[] | select(.geosite != null)' "$config_file" >/dev/null; then
-        jq '(.route.rules |= [.[] | select(.geosite != null)] + [.[] | select(.geosite == null)])' "$config_file" > "$temp_config_file"
+    if jq -e '.route.rules[] | select(.rule_set != null)' "$config_file" >/dev/null; then
+        jq '(.route.rules |= [.[] | select(.rule_set != null)] + [.[] | select(.rule_set == null)])' "$config_file" > "$temp_config_file"
         mv "$temp_config_file" "$config_file"
     fi
 }
@@ -2430,16 +2432,47 @@ function generate_trojan_config() {
   
 function update_route_file() {
     local config_file="/usr/local/etc/sing-box/config.json"
-    local geosite_list=$(IFS=,; echo "${geosite[*]}") 
-    local geosite_formatted=$(sed 's/,/,\\n          /g' <<< "$geosite_list") 
+    local rule_set_list=$(IFS=,; echo "${geosite[*]}")
     echo "正在配置 WireGuard..."
-    sed -i '/"rules": \[/!b;a\
-      {\
-        "geosite": [\
-          '"$geosite_formatted"'\
-        ],\
-        "outbound": "'"$1"'"\
-      },' "$config_file"
+    jq --argjson rule_sets "[$rule_set_list]" --arg outbound "$1" '
+      .route.rule_set = ((.route.rule_set // []) + [
+        {
+          "type": "remote",
+          "tag": "geosite-openai",
+          "format": "binary",
+          "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-openai.srs",
+          "download_detour": "direct"
+        },
+        {
+          "type": "remote",
+          "tag": "geosite-netflix",
+          "format": "binary",
+          "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-netflix.srs",
+          "download_detour": "direct"
+        },
+        {
+          "type": "remote",
+          "tag": "geosite-disney",
+          "format": "binary",
+          "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-disney.srs",
+          "download_detour": "direct"
+        },
+        {
+          "type": "remote",
+          "tag": "geosite-youtube",
+          "format": "binary",
+          "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-youtube.srs",
+          "download_detour": "direct"
+        }
+      ] | unique_by(.tag)) |
+      .route.rules = ([
+        {
+          "rule_set": ($rule_sets | map("geosite-" + .)),
+          "outbound": $outbound
+        }
+      ] + (.route.rules // []))
+    ' "$config_file" > "$config_file.tmp"
+    mv "$config_file.tmp" "$config_file"
 }
 
 function update_outbound_file() {
@@ -2467,6 +2500,7 @@ function update_outbound_file() {
 }
 
 function write_phone_client_file() {
+    return 0
     local dir="/usr/local/etc/sing-box"
     local phone_client="${dir}/phone_client.json"
     if [ ! -s "${phone_client}" ]; then
@@ -2475,6 +2509,7 @@ function write_phone_client_file() {
 }
 
 function write_win_client_file() {
+    return 0
     local dir="/usr/local/etc/sing-box"
     local win_client="${dir}/win_client.json"
     if [ ! -s "${win_client}" ]; then
@@ -2483,6 +2518,7 @@ function write_win_client_file() {
 }
 
 function write_clash_yaml() {
+    return 0
     local dir="/usr/local/etc/sing-box"
     local clash_yaml="${dir}/clash.yaml"
     if [ ! -s "${clash_yaml}" ]; then
@@ -2494,6 +2530,7 @@ function write_clash_yaml() {
 }
 
 function write_naive_client_file() {
+    return 0
     local naive_client_file="$naive_client_filename"
     awk -v naive_client_file="$naive_client_file" 'BEGIN { print "{"; print "  \"listen\":  \"socks://127.0.0.1:1080\","; print "  \"proxy\": \"https://user_name:user_password@server_name:listen_port\""; print "}" }' > "$naive_client_file"
 }
@@ -3540,12 +3577,7 @@ function extract_types_tags() {
 
 function delete_choice() {
     local config_file="/usr/local/etc/sing-box/config.json"
-    local phone_client_file="/usr/local/etc/sing-box/phone_client.json"
-    local win_client_file="/usr/local/etc/sing-box/win_client.json"
-    local clash_yaml="/usr/local/etc/sing-box/clash.yaml"
-    local output_file="/usr/local/etc/sing-box/output.txt"
     local temp_json="/usr/local/etc/sing-box/temp.json"
-    local temp_yaml="/usr/local/etc/sing-box/temp.yaml"
     extract_types_tags
     valid_choice=false
     while [ "$valid_choice" == false ]; do
@@ -3571,62 +3603,12 @@ function delete_choice() {
         jq --arg selected_tag "$selected_tag" '.route.rules |= map(select(.inbound[0] != $selected_tag))' "$config_file" > "$temp_json"
         mv "$temp_json" "$config_file"
     fi
-    if [ "$selected_type" != "wireguard" ]; then
-        awk -v port="$listen_port" '$0 ~ "监听端口: " port {print; in_block=1; next} in_block && NF == 0 {in_block=0} !in_block' "$output_file" > "$output_file.tmp1"
-        mv "$output_file.tmp1" "$output_file"
-        awk -v port="$listen_port" '$0 ~ "监听端口: " port {start=NR; next} {lines[NR]=$0} END {for (i=1; i<=NR; i++) if (i < start - 4 || i > start) print lines[i]}' "$output_file" > "$output_file.tmp2"
-        mv "$output_file.tmp2" "$output_file"
-        sed -i '/./,$!d' "$output_file"
-    fi
-    if [ -f "$clash_yaml" ]; then
-    get_clash_tags=$(awk '/proxies:/ {in_proxies_block=1} in_proxies_block && /- name:/ {name = $3} in_proxies_block && /port:/ {port = $2; print "Name:", name, "Port:", port}' "$clash_yaml" > "$temp_yaml")
-    matching_clash_tag=$(grep "Port: $listen_port" "$temp_yaml" | awk '{print $2}')
-    fi
-    if [ -n "$listen_port" ]; then
-        phone_matching_tag=$(jq -r --argjson listen_port "$listen_port" '.outbounds[] | select(.server_port == $listen_port) | .tag' "$phone_client_file")
-        win_matching_tag=$(jq -r --argjson listen_port "$listen_port" '.outbounds[] | select(.server_port == $listen_port) | .tag' "$win_client_file")
-    fi
-    jq --arg tag "$phone_matching_tag" '.outbounds |= map(select(.tag != $tag))' "$phone_client_file" > "$temp_json"
-    mv "$temp_json" "$phone_client_file"
-    jq --arg tag "$win_matching_tag" '.outbounds |= map(select(.tag != $tag))' "$win_client_file" > "$temp_json"
-    mv "$temp_json" "$win_client_file"
-    if [ -n "$matching_clash_tag" ] && [ "$selected_type" != "wireguard" ]; then
-      sed -i "/^  - name: $matching_clash_tag$/,/^\s*$/d" "$clash_yaml"
-      sed -i "/proxy-groups:/,/^\s*$/ {/      - $matching_clash_tag/d}" "$clash_yaml"
-    fi
-    phone_matching_detour=$(jq -r --arg phone_matching_tag "$phone_matching_tag" '.outbounds[] | select(.detour == $phone_matching_tag) | .detour' "$phone_client_file")
-    win_matching_detour=$(jq -r --arg win_matching_tag "$win_matching_tag" '.outbounds[] | select(.detour == $win_matching_tag) | .detour' "$win_client_file")
-    phone_matching_detour_tag=$(jq -r --arg phone_matching_detour "$phone_matching_detour" '.outbounds[] | select(.detour == $phone_matching_detour) | .tag' "$phone_client_file")
-    win_matching_detour_tag=$(jq -r --arg win_matching_detour "$win_matching_detour" '.outbounds[] | select(.detour == $win_matching_detour) | .tag' "$win_client_file")
-    awk -v phone_matching_tag="$phone_matching_tag" '!/^      "outbounds": \[$/,/^\s*]/{if (!($0 ~ "^ * \"" phone_matching_tag "\"")) print; else next; }' "$phone_client_file" > "$phone_client_file.tmp"
-    mv "$phone_client_file.tmp" "$phone_client_file"
-    awk -v win_matching_tag="$win_matching_tag" '!/^      "outbounds": \[$/,/^\s*]/{if (!($0 ~ "^ * \"" win_matching_tag "\"")) print; else next; }' "$win_client_file" > "$win_client_file.tmp"
-    mv "$win_client_file.tmp" "$win_client_file"
-    if [ "$phone_matching_tag" == "$phone_matching_detour" ]; then
-        jq --arg phone_matching_detour "$phone_matching_detour" '.outbounds |= map(select(.detour != $phone_matching_detour))' "$phone_client_file" > "$temp_json"
-        mv "$temp_json" "$phone_client_file"
-        awk -v phone_matching_detour_tag="$phone_matching_detour_tag" '!/^      "outbounds": \[$/,/^\s*]/{if (!($0 ~ "^ * \"" phone_matching_detour_tag "\"")) print; else next; }' "$phone_client_file" > "$phone_client_file.tmp"
-        mv "$phone_client_file.tmp" "$phone_client_file"
-    fi
-    if [ "$win_matching_tag" == "$win_matching_detour" ]; then
-        jq --arg win_matching_detour "$win_matching_detour" '.outbounds |= map(select(.detour != $win_matching_detour))' "$win_client_file" > "$temp_json"
-        mv "$temp_json" "$win_client_file"
-        awk -v win_matching_detour_tag="$win_matching_detour_tag" '!/^      "outbounds": \[$/,/^\s*]/{if (!($0 ~ "^ * \"" win_matching_detour_tag "\"")) print; else next; }' "$win_client_file" > "$win_client_file.tmp"
-        mv "$win_client_file.tmp" "$win_client_file"
-    fi
-    awk '{if ($0 ~ /],$/ && p ~ /,$/) sub(/,$/, "", p); if (NR > 1) print p; p = $0;}END{print p;}' "$phone_client_file" > "$phone_client_file.tmp"
-    mv "$phone_client_file.tmp" "$phone_client_file"
-    awk '{if ($0 ~ /],$/ && p ~ /,$/) sub(/,$/, "", p); if (NR > 1) print p; p = $0;}END{print p;}' "$win_client_file" > "$win_client_file.tmp"
-    mv "$win_client_file.tmp" "$win_client_file"
-    [ -f "$temp_yaml" ] && rm "$temp_yaml"
     if ! jq -e 'select(.inbounds[] | .listen == "::")' "$config_file" > /dev/null; then
         sed -i 's/"rules": \[\]/"rules": [\n    ]/' "$config_file"
         sed -i 's/^  "inbounds": \[\],/  "inbounds": [\n  ],/' "$config_file"
-        sed -i 's/^      "outbounds": \[\],/      "outbounds": [\n      ],/' "$win_client_file"
-        sed -i 's/^      "outbounds": \[\],/      "outbounds": [\n      ],/' "$phone_client_file"
     fi
     systemctl restart sing-box
-    echo "已删除 $selected_type 的配置信息，服务端及客户端配置信息已更新，请下载新的配置文件使用！"
+    echo "已删除 $selected_type 的配置信息，config.json 已更新。"
 }
 
 function display_naive_config_info() {
@@ -3652,6 +3634,7 @@ function display_naive_config_info() {
 }
 
 function generate_naive_config_files() {
+    return 0
     local config_file="/usr/local/etc/sing-box/config.json"
     local naive_client_file="$naive_client_filename"
     local num_users=${#user_names[@]}     
@@ -3715,7 +3698,6 @@ function display_juicity_config() {
     echo "" >> "$output_file"
     echo "分享链接："
     juicity-server generate-sharelink -c "$config_file"
-    generate_juicity_win_client_config
     echo "配置信息已保存至 $output_file"
 }
 
@@ -3753,6 +3735,7 @@ function display_http_config_info() {
 }
 
 function display_http_config_files() {
+    return 0
     local config_file="/usr/local/etc/sing-box/config.json"
     local clash_file="/usr/local/etc/sing-box/clash.yaml" 
     local phone_client_file="/usr/local/etc/sing-box/phone_client.json" 
@@ -3826,6 +3809,7 @@ function display_tuic_config_info() {
 }
 
 function display_tuic_config_files() {
+    return 0
     local config_file="/usr/local/etc/sing-box/config.json"
     local clash_file="/usr/local/etc/sing-box/clash.yaml" 
     local phone_client_file="/usr/local/etc/sing-box/phone_client.json" 
@@ -3885,6 +3869,7 @@ function display_Shadowsocks_config_info() {
 }
 
 function display_Shadowsocks_config_files() {
+    return 0
     local config_file="/usr/local/etc/sing-box/config.json"
     local clash_file="/usr/local/etc/sing-box/clash.yaml" 
     local phone_client_file="/usr/local/etc/sing-box/phone_client.json" 
@@ -3935,6 +3920,7 @@ function display_socks_config_info() {
 }
 
 function display_socks_config_files() {
+    return 0
     local config_file="/usr/local/etc/sing-box/config.json"
     local clash_file="/usr/local/etc/sing-box/clash.yaml" 
     local phone_client_file="/usr/local/etc/sing-box/phone_client.json" 
@@ -4005,6 +3991,7 @@ function display_Hysteria_config_info() {
 }
 
 function display_Hysteria_config_files() {
+    return 0
     local config_file="/usr/local/etc/sing-box/config.json"
     local clash_file="/usr/local/etc/sing-box/clash.yaml" 
     local phone_client_file="/usr/local/etc/sing-box/phone_client.json" 
@@ -4081,6 +4068,7 @@ function display_Hy2_config_info() {
 }
 
 function display_Hy2_config_files() {
+    return 0
     local config_file="/usr/local/etc/sing-box/config.json"
     local clash_file="/usr/local/etc/sing-box/clash.yaml"  
     local phone_client_file="/usr/local/etc/sing-box/phone_client.json" 
@@ -4184,6 +4172,7 @@ function display_reality_config_info() {
 }
 
 function display_reality_config_files() {
+    return 0
     local config_file="/usr/local/etc/sing-box/config.json" 
     local clash_file="/usr/local/etc/sing-box/clash.yaml" 
     local phone_client_file="/usr/local/etc/sing-box/phone_client.json" 
@@ -4304,6 +4293,7 @@ function display_vmess_config_info() {
 }
 
 function display_vmess_config_files() {
+    return 0
     local config_file="/usr/local/etc/sing-box/config.json"
     local clash_file="/usr/local/etc/sing-box/clash.yaml" 
     local phone_client_file="/usr/local/etc/sing-box/phone_client.json" 
@@ -4411,7 +4401,8 @@ function display_trojan_config_info() {
 }
 
 function display_trojan_config_files() {
-    local config_file="/usr/local/etc/sing-box/config.json"
+    return 0
+    local config_file="/usr/local/etc/sing-box/config.json"    
     local clash_file="/usr/local/etc/sing-box/clash.yaml" 
     local phone_client_file="/usr/local/etc/sing-box/phone_client.json" 
     local win_client_file="/usr/local/etc/sing-box/win_client.json"          
@@ -4484,6 +4475,7 @@ function display_shadowtls_config_info() {
 }
 
 function display_shadowtls_config_files() {
+    return 0
     local config_file="/usr/local/etc/sing-box/config.json"
     local clash_file="/usr/local/etc/sing-box/clash.yaml" 
     local phone_client_file="/usr/local/etc/sing-box/phone_client.json" 
@@ -4507,20 +4499,20 @@ function display_shadowtls_config_files() {
 
 function view_saved_config() {
     local config_paths=(
-        "/usr/local/etc/sing-box/output.txt"
-        "/usr/local/etc/juicity/output.txt"
+        "/usr/local/etc/sing-box/config.json"
+        "/usr/local/etc/juicity/config.json"
     )
     local found=false
     for path in "${config_paths[@]}"; do
         if [[ -f "$path" ]]; then
-            echo "配置信息文件 ($path):"
+            echo "配置文件 ($path):"
             cat "$path"
             found=true
         fi
     done
 
     if [[ "$found" == false ]]; then
-        echo "未找到保存的配置信息文件！"
+        echo "未找到 config.json！"
     fi
 }
 
@@ -4617,7 +4609,6 @@ function juicity_install() {
     systemctl enable juicity.service
     systemctl start juicity.service
     systemctl restart juicity.service
-    display_juicity_config
 }
 
 function Direct_install() {
@@ -4636,7 +4627,6 @@ function Direct_install() {
     systemctl start sing-box
     systemctl restart sing-box
     get_local_ip    
-    display_Direct_config
 }
 
 function Shadowsocks_install() {
@@ -4655,8 +4645,6 @@ function Shadowsocks_install() {
     systemctl start sing-box
     systemctl restart sing-box
     get_local_ip
-    display_Shadowsocks_config_info
-    display_Shadowsocks_config_files
 }
 
 function socks_install() {
@@ -4672,8 +4660,6 @@ function socks_install() {
     systemctl start sing-box
     systemctl restart sing-box
     get_local_ip
-    display_socks_config_info
-    display_socks_config_files
 }
 
 function NaiveProxy_install() {
@@ -4688,8 +4674,6 @@ function NaiveProxy_install() {
     systemctl enable sing-box
     systemctl start sing-box
     systemctl restart sing-box
-    display_naive_config_info
-    generate_naive_config_files
 }
 
 function http_install() {
@@ -4704,8 +4688,6 @@ function http_install() {
     systemctl enable sing-box
     systemctl start sing-box
     systemctl restart sing-box
-    display_http_config_info
-    display_http_config_files
 }
 
 function tuic_install() {
@@ -4721,8 +4703,6 @@ function tuic_install() {
     systemctl start sing-box
     systemctl restart sing-box
     get_local_ip 
-    display_tuic_config_info
-    display_tuic_config_files
 }
 
 function Hysteria_install() {
@@ -4737,8 +4717,6 @@ function Hysteria_install() {
     systemctl enable sing-box
     systemctl start sing-box
     systemctl restart sing-box
-    display_Hysteria_config_info
-    display_Hysteria_config_files
 }
 
 function shadowtls_install() {
@@ -4754,8 +4732,6 @@ function shadowtls_install() {
     systemctl start sing-box
     systemctl restart sing-box
     get_local_ip    
-    display_shadowtls_config_info
-    display_shadowtls_config_files
 }
 
 function reality_install() {
@@ -4771,8 +4747,6 @@ function reality_install() {
     systemctl start sing-box
     systemctl restart sing-box
     get_local_ip    
-    display_reality_config_info
-    display_reality_config_files
 }
 
 function Hysteria2_install() {
@@ -4787,8 +4761,6 @@ function Hysteria2_install() {
     systemctl enable sing-box
     systemctl start sing-box
     systemctl restart sing-box
-    display_Hy2_config_info
-    display_Hy2_config_files
 }
 
 function trojan_install() {
@@ -4803,8 +4775,6 @@ function trojan_install() {
     systemctl enable sing-box 
     systemctl start sing-box
     systemctl restart sing-box
-    display_trojan_config_info
-    display_trojan_config_files
 }
 
 function vmess_install() {
@@ -4820,8 +4790,6 @@ function vmess_install() {
     systemctl enable sing-box
     systemctl start sing-box
     systemctl restart sing-box
-    display_vmess_config_info
-    display_vmess_config_files
 }
 
 function wireguard_install() {
@@ -4861,7 +4829,7 @@ echo -e "║${CYAN} [7]${NC}  Juicity                           ${CYAN} [8]${NC}
 echo -e "║${CYAN} [9]${NC}  Hysteria                          ${CYAN} [10]${NC}  Hysteria2                ║"
 echo -e "║${CYAN} [11]${NC} ShadowTLS                         ${CYAN} [12]${NC}  NaiveProxy               ║"
 echo -e "║${CYAN} [13]${NC} Shadowsocks                       ${CYAN} [14]${NC}  WireGuard                ║"
-echo -e "║${CYAN} [15]${NC} 查看节点信息                      ${CYAN} [16]${NC}  更新内核                 ║"
+echo -e "║${CYAN} [15]${NC} 查看 config.json                  ${CYAN} [16]${NC}  更新内核                 ║"
 echo -e "║${CYAN} [17]${NC} 更新脚本                          ${CYAN} [18]${NC}  更新证书                 ║"
 echo -e "║${CYAN} [19]${NC} 重启服务                          ${CYAN} [20]${NC}  节点管理                 ║"
 echo -e "║${CYAN} [21]${NC} 卸载                              ${CYAN} [0]${NC}   退出                     ║"
