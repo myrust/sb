@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-RAW_URL="https://raw.githubusercontent.com/myrust/sb/main/singbox.py"
+RAW_URL="https://raw.githubusercontent.com/myrust/sb/main/sb.py"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || pwd)"
-LOCAL_PY="${SCRIPT_DIR}/singbox.py"
-INSTALL_PY="/usr/local/bin/singbox-manage.py"
+LOCAL_PY="${SCRIPT_DIR}/sb.py"
+SB_BIN="/usr/local/bin/sb"
 
 if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
-    echo "请使用 root 权限运行此脚本 (sudo bash singbox.sh)"
+    echo "请使用 root 权限运行此脚本 (sudo bash sb.sh)"
     exit 1
 fi
 
@@ -33,9 +33,11 @@ if ! command -v python3 >/dev/null 2>&1 || ! command -v openssl >/dev/null 2>&1 
 fi
 
 if [[ -f "${LOCAL_PY}" ]]; then
-    exec python3 "${LOCAL_PY}" "$@"
+    cp -f "${LOCAL_PY}" "${SB_BIN}"
 else
-    curl -fsSL "${RAW_URL}" -o "${INSTALL_PY}"
-    chmod +x "${INSTALL_PY}"
-    exec python3 "${INSTALL_PY}" "$@"
+    curl -fsSL "${RAW_URL}" -o "${SB_BIN}"
 fi
+chmod +x "${SB_BIN}"
+echo "已注册全局命令：之后可直接输入 sb 打开管理菜单。"
+
+exec "${SB_BIN}" "$@"

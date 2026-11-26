@@ -1,7 +1,8 @@
-# sing-box 管理脚本
+# sb — sing-box 管理脚本
 
 基于 Python 3（仅使用标准库）重构，适配 **sing-box 1.14 / 1.15+** 配置语法。
 
+- 快捷命令：`/usr/local/bin/sb`（安装后直接输入 `sb` 打开菜单）
 - 可执行文件：`/usr/local/bin/sing-box`
 - systemd 服务：`/etc/systemd/system/sing-box.service`
 - 配置文件：`/usr/local/etc/sing-box/config.json`
@@ -23,21 +24,21 @@ apt update && apt install -y python3 curl wget tar openssl qrencode
 yum update -y && yum install -y python3 curl wget tar openssl epel-release && yum install -y qrencode
 ```
 
-## 一键运行
+## 一键安装与使用
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/myrust/sb/main/singbox.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/myrust/sb/main/sb.sh)
 ```
 
-或本地直接运行：
+安装完成后会自动注册全局命令，之后随时输入以下命令即可打开管理菜单：
 
 ```bash
-sudo python3 singbox.py
+sb
 ```
 
 ## 支持的协议与功能
 
-- **入站协议**：VLESS (Reality + Vision)、Hysteria2、TUIC v5、ShadowTLS v3、NaiveProxy、Shadowsocks、SOCKS5、HTTP (TLS)、Direct 端口转发
+- **入站协议**：VLESS (Reality + Vision)、Hysteria2（支持 BBR 不限速或 Brutal 带宽模式）、TUIC v5、ShadowTLS v3、NaiveProxy、Shadowsocks、SOCKS5、HTTP (TLS)、Direct 端口转发
 - **Endpoints (1.14 / 1.15)**：WireGuard (WARP)、MASQUE Server (1.15)、Tailscale
 - **证书签发**：sing-box 原生 `certificate_providers` (ACME 自动签发与续期)、ECDSA 自签名证书、自定义证书路径
 - **节点输出**：关键参数 + URI 分享链接（安装 `qrencode` 后可自动打印终端二维码）

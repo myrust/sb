@@ -900,8 +900,8 @@ def install_hysteria2() -> None:
     tag = unique_tag(cfg, "hy2")
     port = prompt_listen_port()
     users = prompt_users_userpass("hy2")
-    up_mbps = prompt_int("服务端上行带宽 Mbps (即客户端下行)", 10, 10000, default=100)
-    down_mbps = prompt_int("服务端下行带宽 Mbps (即客户端上行)", 10, 10000, default=100)
+    up_mbps = prompt_int("服务端上行带宽 Mbps，填 0 不限速走 BBR", 0, 10000, default=0)
+    down_mbps = prompt_int("服务端下行带宽 Mbps，填 0 不限速走 BBR", 0, 10000, default=0)
     tls_block, meta = setup_tls(cfg, require_real_domain=False, alpn=["h3"], allow_ech=True)
 
     inbound: dict[str, Any] = {
@@ -909,11 +909,13 @@ def install_hysteria2() -> None:
         "tag": tag,
         "listen": "::",
         "listen_port": port,
-        "up_mbps": up_mbps,
-        "down_mbps": down_mbps,
         "users": [{"name": u["username"], "password": u["password"]} for u in users],
         "tls": tls_block,
     }
+    if up_mbps > 0:
+        inbound["up_mbps"] = up_mbps
+    if down_mbps > 0:
+        inbound["down_mbps"] = down_mbps
     obfs_pwd = ""
     if prompt_yes_no("是否启用 Salamander 混淆 (仅限特殊阻断环境，常规建议关闭)", default=False):
         obfs_pwd = prompt("混淆密码 (留空自动生成)") or generate_rand_base64(16)
@@ -1316,9 +1318,13 @@ def update_core() -> None:
 def update_script() -> None:
     target = Path(__file__).resolve()
     info(f"正在从 GitHub 更新脚本至 {target} ...")
-    http_download(f"{SCRIPT_RAW_BASE}/singbox.py", target)
+    http_download(f"{SCRIPT_RAW_BASE}/sb.py", target)
     target.chmod(0o755)
-    ok("脚本已更新，请重新运行。")
+    sb_bin = Path("/usr/local/bin/sb")
+    if target != sb_bin:
+        shutil.copy2(target, sb_bin)
+        sb_bin.chmod(0o755)
+    ok("脚本已更新，输入 sb 即可再次运行。")
 
 
 def restart_and_status() -> None:
@@ -1339,6 +1345,7 @@ def uninstall_all() -> None:
     run_cmd(["systemctl", "disable", "sing-box"], check=False, capture=True)
     SERVICE_FILE.unlink(missing_ok=True)
     SING_BOX_BIN.unlink(missing_ok=True)
+    Path("/usr/local/bin/sb").unlink(missing_ok=True)
     shutil.rmtree(CONFIG_DIR, ignore_errors=True)
     run_cmd(["systemctl", "daemon-reload"], check=False)
     ok("sing-box 已彻底卸载。")
@@ -1393,5 +1400,5 @@ def main_menu() -> None:
 
 if __name__ == "__main__":
     if os.geteuid() != 0 and "--allow-non-root" not in sys.argv:
-        warn("建议使用 root 权限运行此脚本 (sudo python3 singbox.py)")
+        warn("建议使用 root 权限运行此脚本 (sudo sb)")
     main_menu()
